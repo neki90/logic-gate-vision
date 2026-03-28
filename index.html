@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogicGate Vision - AI Образователен Асистент</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f4f8; text-align: center; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; font-size: 32px; margin-bottom: 10px; }
+        .subtitle { color: #7f8c8d; font-size: 18px; margin-bottom: 30px; }
+        
+        /* Секция за качване */
+        #upload-container { border: 3px dashed #3498db; padding: 40px; border-radius: 15px; cursor: pointer; background-color: #ecf0f1; transition: background-color 0.3s; }
+        #upload-container:hover { background-color: #d6eaf8; }
+        #image-preview { max-width: 100%; max-height: 300px; margin-top: 20px; border-radius: 10px; display: none; border: 2px solid #ddd; }
+        .file-input-label { background-color: #3498db; color: white; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .file-input-label:hover { background-color: #2980b9; }
+        #file-input { display: none; }
+
+        /* Секция с резултати */
+        #result-container { margin-top: 40px; display: none; text-align: left; }
+        #prediction-label { font-size: 26px; font-weight: bold; color: #e74c3c; margin-bottom: 20px; text-align: center; }
+        .content-flex { display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; }
+        
+        /* Таблици на истинност */
+        .truth-table-wrapper { flex: 1; min-width: 250px; }
+        .truth-table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 8px; overflow: hidden; }
+        .truth-table th, .truth-table td { border: 1px solid #ddd; padding: 12px; text-align: center; }
+        .truth-table th { background-color: #2c3e50; color: white; }
+        .truth-table tr:nth-child(even) { background-color: #f9f9f9; }
+
+        /* Описание на функцията */
+        #function-description { flex: 2; min-width: 300px; background-color: #fbfcfc; padding: 25px; border-radius: 10px; border-left: 5px solid #3498db; }
+        #function-description h3 { color: #3498db; margin-top: 0; }
+        #function-description p { line-height: 1.6; font-size: 16px; }
+
+        /* Скриване на елементи по подразбиране */
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>LogicGate Vision 🤖</h1>
+    <p class="subtitle">AI Асистент по Дигитална Схемотехника: Качете снимка на логически елемент, за да видите неговата функция и таблица на истинност.</p>
+    
+    <div id="upload-container" onclick="document.getElementById('file-input').click()">
+        <label for="file-input" class="file-input-label">Качи изображение</label>
+        <input type="file" id="file-input" accept="image/*" onchange="handleImageUpload(this)">
+        <p>Или провлачете и пуснете файл тук</p>
+        <img id="image-preview" alt="Преглед на изображението">
+    </div>
+    
+    <div id="result-container">
+        <div id="prediction-label">Разпознаване...</div>
+        
+        <div class="content-flex">
+            <div id="table-area" class="truth-table-wrapper"></div>
+            
+            <div id="description-area" class="hidden">
+                <div id="function-description">
+                    <h3>Образователно описание:</h3>
+                    <p id="description-text"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+<script type="text/javascript">
+    // ТВОЯТ ЛИНК ОТ TEACHABLE MACHINE
+    const URL = "https://teachablemachine.withgoogle.com/models/caeOA7e5w/";
+
+    let model, maxPredictions;
+
+    // Зареждане на модела при зареждане на страницата
+    async function loadModel() {
+        const modelURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
+        model = await tmImage.load(modelURL, metadataURL);
+        maxPredictions = model.getTotalClasses();
+        console.log("AI моделът е зареден успешно!");
+    }
+
+    loadModel(); // Стартиране на зареждането
+
+    // Функция за управление на каченото изображение
+    function handleImageUpload(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const img = document.getElementById('image-preview');
+                img.src = e.target.result;
+                img.style.display = 'block';
+                
+                // След като изображението се зареди в тага, правим предсказание
+                img.onload = function() {
+                    predict(img);
+                };
+            };
+            
+            reader.readAsDataURL(input.files[0]);
+            
+            // Скриване на предишни резултати, докато се обработва новото изображение
+            document.getElementById("result-container").style.display = "block";
+            document.getElementById("prediction-label").innerHTML = "Сканиране...";
+            document.getElementById("description-area").className = "hidden";
+            document.getElementById("table-area").innerHTML = "";
+        }
+    }
+
+    // Обработка на Drag & Drop
+    const uploadContainer = document.getElementById('upload-container');
+    uploadContainer.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+    uploadContainer.addEventListener('drop', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            document.getElementById('file-input').files = files;
+            handleImageUpload(document.getElementById('file-input'));
+        }
+    });
+
+    // Функция за класификация на изображението
+    async function predict(imageElement) {
+        const prediction = await model.predict(imageElement);
+        let bestPrediction = { className: "", probability: 0 };
+
+        for (let i = 0; i < maxPredictions; i++) {
+            if (prediction[i].probability > bestPrediction.probability) {
+                bestPrediction = prediction[i];
+            }
+        }
+
+        const labelContainer = document.getElementById("prediction-label");
+
+        // Показване на резултат само ако увереността е над 80%
+        if (bestPrediction.probability > 0.80) {
+            labelContainer.innerHTML = "Разпознат елемент: **" + bestPrediction.className + "**";
+            updateResults(bestPrediction.className);
+        } else {
+            labelContainer.innerHTML = "AI моделът не е уверен. Моля, качете по-ясна снимка.";
+            document.getElementById("table-area").innerHTML = "";
+            document.getElementById("description-area").className = "hidden";
+        }
+    }
+
+    // Динамично актуализиране на таблицата и описанието
+    // Динамично актуализиране на таблицата и описанието
+    function updateResults(gateName) {
+        const tableArea = document.getElementById("table-area");
+        const descriptionArea = document.getElementById("description-area");
+        const descriptionText = document.getElementById("description-text");
+
+        descriptionArea.className = ""; // Показване на секцията с описание
+
+        // Дефиниции за таблици и текстове - ПРОМЕНИХМЕ ИМЕНАТА ТУК
+        const data = {
+            "Class 2": { // Променено от "AND" на "Class 1"
+                description: "**Логическата операция И (AND)** е основна функция, която дава изход логическа 1 (истина) **САМО тогава, когато И ДВАТА нейни входа (A и B) са 1**. Ако някой от входовете е 0, изходът е 0. В електрониката тя често се сравнява с два електрически ключа, свързани последователно.",
+                table: generateTableHTML("AND (И)", ["000", "010", "100", "111"])
+            },
+            "Class 1": { // Променено от "OR" на "Class 2" (или както си кръстил втория клас в Teachable Machine)
+                description: "**Логическата операция ИЛИ (OR)** дава изход логическа 1 (истина), **ако поне ЕДИН от нейните входа е 1**. Изходът е 0 само тогава, когато ВСИЧКИ входове са 0. Тя може да се оприличи на два електрически ключа, свързани паралелно.",
+                table: generateTableHTML("OR (ИЛИ)", ["000", "011", "101", "111"])
+            },
+            // АКО ИМАШ ОЩЕ КЛАСОВЕ (Class 3 за NOT), ДОБАВИ ГИ ТУК СЪС СЪЩАТА СТРУКТУРА
+        };
+
+        // Проверка дали gateName от модела съвпада с дефинициите в 'data'
+        if (data[gateName]) {
+            descriptionText.innerHTML = data[gateName].description;
+            tableArea.innerHTML = data[gateName].table;
+        } else {
+            // Вече няма да показваме това съобщение за Class 1
+            tableArea.innerHTML = "<p>Няма налична информация за този елемент (разпознат като: " + gateName + "). Проверете имената на класовете в кода.</p>";
+            descriptionText.innerText = "";
+        }
+    }
+
+    // Помощна функция за генериране на HTML кода на таблицата
+    function generateTableHTML(title, rows) {
+        let html = '<table class="truth-table"><tr><th colspan="3">Таблица на истинност: ' + title + '</th></tr><tr><th>A</th><th>B</th><th>Y</th></tr>';
+        rows.forEach(row => {
+            html += '<tr><td>' + row[0] + '</td><td>' + row[1] + '</td><td>' + row[2] + '</td></tr>';
+        });
+        html += '</table>';
+        return html;
+    }
+</script>
+
+</body>
+</html>
